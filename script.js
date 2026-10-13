@@ -1,33 +1,35 @@
-    document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("upload-form");
     const imageInput = document.getElementById("image-input");
     const dropZone = document.getElementById("drop-zone");
     const preview = document.getElementById("preview");
-
     const fileRow = document.getElementById("file-row");
     const fileName = document.getElementById("file-name");
     const removeButton = document.getElementById("remove-file");
-
     const classifyButton = document.getElementById("classify-button");
     const status = document.getElementById("status");
     const result = document.getElementById("result");
 
     let selectedFile = null;
-    let previewUrl = null;
+    let previewURL = null;
 
-    // Display status messages
     function showStatus(message, isError = false) {
         status.textContent = message;
         status.hidden = false;
         status.style.color = isError ? "#b42318" : "#176b4d";
     }
 
-    // Display the selected image
     function showPreview(file) {
         if (!file) return;
 
-        if (!file.type.startsWith("image/")) {
-            showStatus("Please select a valid image file.", true);
+        const allowedTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+        ];
+
+        if (!allowedTypes.includes(file.type)) {
+            showStatus("Please select a JPG, PNG or WEBP image.", true);
             return;
         }
 
@@ -36,34 +38,31 @@
             return;
         }
 
-        if (
-            !["image/jpeg", "image/png", "image/webp"].includes(file.type)
-        ) {
-            showStatus("Please select PNG, JPG or WEBP format.", true);
-            return;
-        }
-
         selectedFile = file;
 
-        if (previewUrl) {
-            URL.revokeObjectURL(previewUrl);
+        if (previewURL) {
+            URL.revokeObjectURL(previewURL);
         }
 
-        previewUrl = URL.createObjectURL(file);
+        previewURL = URL.createObjectURL(file);
 
-        preview.src = previewUrl;
+        preview.onload = () => {
+            preview.hidden = false;
+        };
+
+        preview.onerror = () => {
+            showStatus("Could not display this image. Try another file.", true);
+        };
+
+        preview.src = previewURL;
         preview.hidden = false;
 
         fileName.textContent = file.name;
         fileRow.hidden = false;
-
-        status.hidden = true;
         result.hidden = true;
-
-        showStatus("Image selected successfully!");
+        status.hidden = true;
     }
 
-    // Select image using file picker
     imageInput.addEventListener("change", () => {
         const file = imageInput.files[0];
 
@@ -72,14 +71,12 @@
         }
     });
 
-    // Allow drag and drop
     dropZone.addEventListener("dragover", (event) => {
         event.preventDefault();
         dropZone.classList.add("drag-over");
     });
 
-    dropZone.addEventListener("dragleave", (event) => {
-        event.preventDefault();
+    dropZone.addEventListener("dragleave", () => {
         dropZone.classList.remove("drag-over");
     });
 
@@ -91,35 +88,29 @@
 
         if (!file) return;
 
-        showPreview(file);
-
-        // Put the dropped file into the input
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
         imageInput.files = dataTransfer.files;
+
+        showPreview(file);
     });
 
-    // Remove selected image
     removeButton.addEventListener("click", () => {
         selectedFile = null;
         imageInput.value = "";
-
         preview.hidden = true;
         preview.removeAttribute("src");
-
-        if (previewUrl) {
-            URL.revokeObjectURL(previewUrl);
-            previewUrl = null;
-        }
-
         fileRow.hidden = true;
         fileName.textContent = "";
-
-        status.hidden = true;
         result.hidden = true;
+        status.hidden = true;
+
+        if (previewURL) {
+            URL.revokeObjectURL(previewURL);
+            previewURL = null;
+        }
     });
 
-    // Submit image to Flask backend
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
@@ -130,9 +121,6 @@
 
         const formData = new FormData();
         formData.append("image", selectedFile);
-
-        // Current demo backend uses the selected category.
-        // No category selector exists in this HTML, so use "other".
         formData.append("category", "other");
 
         classifyButton.disabled = true;
@@ -147,11 +135,11 @@
                 body: formData
             });
 
-            if (!response.ok) {
-                throw new Error("Server error: " + response.status);
-            }
-
             const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Upload failed.");
+            }
 
             document.getElementById("result-category").textContent =
                 data.category;
@@ -163,9 +151,7 @@
                 data.tip;
 
             document.getElementById("result-notice").textContent =
-                data.demo
-                    ? "Demo result: the image is uploaded, but it is not automatically analysed by an AI model yet."
-                    : "";
+                "Demo result: the image has not been automatically analysed by an AI model.";
 
             result.hidden = false;
             status.hidden = true;
@@ -176,24 +162,17 @@
             });
 
         } catch (error) {
-            console.error("Upload error:", error);
-
-            showStatus(
-                "Upload failed. Please refresh the page and try again.",
-                true
-            );
+            showStatus(error.message || "Something went wrong.", true);
         } finally {
             classifyButton.disabled = false;
             classifyButton.innerHTML = 'Classify waste <span>→</span>';
         }
     });
 
-    // Try another image
     const tryAgainButton = document.getElementById("try-again");
 
     if (tryAgainButton) {
         tryAgainButton.addEventListener("click", () => {
-            result.hidden = true;
             imageInput.click();
         });
     }

@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("upload-form");
     const imageInput = document.getElementById("image-input");
     const dropZone = document.getElementById("drop-zone");

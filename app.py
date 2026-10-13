@@ -1,8 +1,8 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
 import os
+from flask import Flask, render_template, request, jsonify
+from werkzeug.utils import secure_filename
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(
     __name__,
@@ -10,24 +10,25 @@ app = Flask(
     static_folder=None
 )
 
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 WASTE_INFO = {
     "plastic": {
         "bin": "Blue / Dry Waste",
-        "tip": "Rinse the item and send it for plastic recycling where accepted."
+        "tip": "Rinse the item and recycle it where local rules allow."
     },
     "paper": {
         "bin": "Blue / Paper Recycling",
-        "tip": "Keep paper dry and clean. Separate greasy or food-soiled paper."
+        "tip": "Keep paper clean and dry before recycling."
     },
     "glass": {
         "bin": "Glass Recycling",
-        "tip": "Handle carefully and follow your local glass collection rules."
+        "tip": "Handle glass carefully and follow local collection rules."
     },
     "metal": {
         "bin": "Metal Recycling",
@@ -39,11 +40,11 @@ WASTE_INFO = {
     },
     "ewaste": {
         "bin": "E-waste Collection Point",
-        "tip": "Take batteries and electronics to an authorized collection point."
+        "tip": "Take electronics and batteries to an authorized collection point."
     },
     "other": {
         "bin": "General / Residual Waste",
-        "tip": "Check local rules before disposing of mixed or contaminated items."
+        "tip": "Check local waste disposal guidelines."
     }
 }
 
@@ -53,40 +54,46 @@ def home():
     return render_template("index.html")
 
 
-# Serve CSS from the repository root
 @app.route("/style.css")
 def serve_css():
-    return send_from_directory(BASE_DIR, "style.css")
+    return app.response_class(
+        response=open(os.path.join(BASE_DIR, "style.css"), encoding="utf-8").read(),
+        mimetype="text/css"
+    )
 
 
-# Serve JavaScript from the repository root
 @app.route("/script.js")
 def serve_js():
-    return send_from_directory(BASE_DIR, "script.js")
+    return app.response_class(
+        response=open(os.path.join(BASE_DIR, "script.js"), encoding="utf-8").read(),
+        mimetype="application/javascript"
+    )
 
 
 @app.route("/classify", methods=["POST"])
 def classify():
-    category = request.form.get("category", "other").lower()
     image = request.files.get("image")
+    category = request.form.get("category", "other").lower()
+
+    if category not in WASTE_INFO:
+        category = "other"
 
     image_url = None
 
     if image and image.filename:
-        safe_name = secure_filename(image.filename)
+        filename = secure_filename(image.filename)
 
-        if not safe_name:
-            return jsonify({"error": "Invalid filename"}), 400
+        if not filename:
+            return jsonify({"error": "Invalid filename."}), 400
 
-        extension = os.path.splitext(safe_name)[1].lower()
+        extension = filename.rsplit(".", 1)[-1].lower()
 
-        if extension not in [".jpg", ".jpeg", ".png", ".webp"]:
-            return jsonify({"error": "Unsupported image format"}), 400
+        if extension not in ALLOWED_EXTENSIONS:
+            return jsonify({
+                "error": "Please upload a PNG, JPG, JPEG or WEBP image."
+            }), 400
 
-        image.save(os.path.join(app.config["UPLOAD_FOLDER"], safe_name))
-
-    if category not in WASTE_INFO:
-        category = "other"
+        image.save(os.path.join(UPLOAD_FOLDER, filename))
 
     info = WASTE_INFO[category]
 
